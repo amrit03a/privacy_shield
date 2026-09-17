@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Privacy Shield - Admin Dashboard</title>
+
+    <link rel="stylesheet"
+          href="css/style.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card dashboard-container">
+
+        <!-- ============================= -->
+        <!-- HEADER -->
+        <!-- ============================= -->
+
+        <h1>Privacy Shield</h1>
+
+        <p class="subtitle">
+            Administrator Dashboard
+        </p>
+
+        <h2>Admin Dashboard</h2>
+
+        <p>
+            Welcome, Administrator.
+        </p>
+
+
+        <!-- ============================= -->
+        <!-- USER MANAGEMENT -->
+        <!-- ============================= -->
+
+        <div class="dashboard-card">
+
+            <h3>
+                👥 User Management
+            </h3>
+
+            <button onclick="loadUsers()">
+                Refresh Users
+            </button>
+
+            <div id="userList"
+                 class="table-container">
+
+                <p>
+                    Click "Refresh Users" to view users.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- ============================= -->
+        <!-- SESSION MANAGEMENT -->
+        <!-- ============================= -->
+
+        <div class="dashboard-card">
+
+            <h3>
+                🔒 Session Management
+            </h3>
+
+            <button onclick="loadSessions()">
+                Refresh Sessions
+            </button>
+
+            <div id="sessionList"
+                 class="table-container">
+
+                <p>
+                    Click "Refresh Sessions" to view sessions.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- ============================= -->
+        <!-- LOGOUT -->
+        <!-- ============================= -->
+
+        <button
+            class="logout-button"
+            onclick="logoutAdmin()">
+
+            Logout
+
+        </button>
+
+        <p id="adminMessage"></p>
+
+    </div>
+
+</div>
+
+
+<script src="js/admin.js"></script>
+
+</body>
+
+</html>

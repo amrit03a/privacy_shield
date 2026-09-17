@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Privacy Shield - Admin Login</title>
+
+    <link rel="stylesheet"
+          href="css/style.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card">
+
+        <h1>Privacy Shield</h1>
+
+        <p class="subtitle">
+            Administrator Access
+        </p>
+
+
+        <!-- ADMIN LOGIN -->
+
+        <div id="adminLoginSection">
+
+            <h2>Admin Login</h2>
+
+            <input
+                type="text"
+                id="adminUsername"
+                placeholder="Admin Username"
+            >
+
+            <input
+                type="password"
+                id="adminPassword"
+                placeholder="Admin Password"
+            >
+
+            <button onclick="adminLogin()">
+                Login as Admin
+            </button>
+
+            <p id="adminLoginMessage"></p>
+
+            <p>
+                <button
+                    class="link-button"
+                    onclick="goToUserLogin()">
+
+                    Back to User Login
+
+                </button>
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script src="js/admin.js"></script>
+
+</body>
+
+</html>

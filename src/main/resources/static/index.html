@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Privacy Shield</title>
+
+    <link rel="stylesheet"
+          href="/css/style.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card">
+
+        <h1>Privacy Shield</h1>
+
+        <p class="subtitle">
+            Secure your private workspace
+        </p>
+
+
+        <!-- ================= LOGIN ================= -->
+
+        <div id="loginSection">
+
+            <h2>Login</h2>
+
+            <input
+                    type="text"
+                    id="loginUsername"
+                    placeholder="Username"
+                    autocomplete="username"
+            >
+
+            <input
+                    type="password"
+                    id="loginPassword"
+                    placeholder="Password"
+                    autocomplete="current-password"
+            >
+
+            <button
+                    type="button"
+                    onclick="loginUser()">
+
+                Login
+
+            </button>
+
+            <p id="loginMessage"
+               class="message"></p>
+
+
+            <p class="switch-text">
+
+                Don't have an account?
+
+                <button
+                        type="button"
+                        class="link-button"
+                        onclick="showRegister()">
+
+                    Register
+
+                </button>
+
+            </p>
+
+        </div>
+
+
+        <!-- ================= REGISTER ================= -->
+
+        <div id="registerSection"
+             class="hidden">
+
+            <h2>Create Account</h2>
+
+
+            <!-- USERNAME -->
+
+            <input
+                    type="text"
+                    id="registerUsername"
+                    placeholder="Username"
+                    autocomplete="username"
+                    maxlength="30"
+            >
+
+            <div class="input-hint">
+                Username: 3–30 characters, letters, numbers,
+                underscore (_) or hyphen (-) only.
+            </div>
+
+
+            <!-- PASSWORD -->
+
+            <div class="password-wrapper">
+
+                <input
+                        type="password"
+                        id="registerPassword"
+                        placeholder="Password"
+                        autocomplete="new-password"
+                        maxlength="30"
+                        oninput="checkPasswordStrength()"
+                >
+
+                <button
+                        type="button"
+                        class="password-toggle"
+                        onclick="toggleRegisterPassword()"
+                        aria-label="Show password"
+                >
+                    👁
+                </button>
+
+            </div>
+
+
+            <!-- PASSWORD REQUIREMENTS -->
+
+            <div id="passwordRequirements"
+                 class="password-requirements">
+
+                <div id="passwordLength">
+                    ✗ 8–30 characters
+                </div>
+
+                <div id="passwordUpper">
+                    ✗ At least one uppercase letter
+                </div>
+
+                <div id="passwordLower">
+                    ✗ At least one lowercase letter
+                </div>
+
+                <div id="passwordNumber">
+                    ✗ At least one number
+                </div>
+
+                <div id="passwordSpecial">
+                    ✗ At least one special character
+                </div>
+
+                <div id="passwordSpace">
+                    ✗ No spaces or whitespace
+                </div>
+
+            </div>
+
+
+            <!-- REGISTER BUTTON -->
+
+            <button
+                    type="button"
+                    onclick="registerUser()">
+
+                Register
+
+            </button>
+
+            <p id="registerMessage"
+               class="message"></p>
+
+
+            <p class="switch-text">
+
+                Already have an account?
+
+                <button
+                        type="button"
+                        class="link-button"
+                        onclick="showLogin()">
+
+                    Login
+
+                </button>
+
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script src="/js/app.js"></script>
+
+</body>
+
+</html>

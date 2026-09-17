@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Privacy Shield - Secure Workspace</title>
+
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card dashboard-container">
+
+        <h1>Privacy Shield</h1>
+
+        <p class="subtitle">
+            Secure Private Workspace
+        </p>
+
+
+        <!-- SESSION INFORMATION -->
+
+        <div class="dashboard-card">
+
+            <h3>🔒 Active Session</h3>
+
+            <p id="workspaceSessionStatus">
+                Checking session...
+            </p>
+
+            <p id="workspaceSessionId"></p>
+
+            <button type="button" onclick="openSecureWorkspace()">
+                Open Secure Workspace
+            </button>
+
+            <button type="button" onclick="openSecureBrowser()">
+                🌐 Open Secure Browser
+            </button>
+
+            <p id="browserMessage" class="message"></p>
+
+        </div>
+
+
+        <!-- FILE UPLOAD -->
+
+        <div class="dashboard-card">
+
+            <h3>Upload File</h3>
+
+            <input
+                type="file"
+                id="fileInput"
+            >
+
+            <button type="button" onclick="uploadFile()">
+                Upload File
+            </button>
+
+            <p id="uploadMessage"></p>
+
+        </div>
+
+
+        <!-- FILE LIST -->
+
+        <div class="dashboard-card">
+
+            <h3>My Secure Files</h3>
+
+            <button type="button" onclick="loadFiles()">
+                Refresh Files
+            </button>
+
+            <div id="fileList">
+
+                <p>
+                    Click "Refresh Files" to view your files.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- ACTIONS -->
+
+        <div class="dashboard-card">
+
+            <button type="button" onclick="endWorkspaceSession()">
+                End Secure Session
+            </button>
+
+            <button type="button" onclick="goBackToDashboard()">
+                Back to Dashboard
+            </button>
+
+        </div>
+
+
+        <p id="workspaceMessage"></p>
+
+    </div>
+
+</div>
+
+
+<script src="js/workspace.js"></script>
+
+</body>
+
+</html>

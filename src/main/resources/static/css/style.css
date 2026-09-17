@@ -1,0 +1,522 @@
+* {
+    box-sizing: border-box;
+}
+
+
+body {
+
+    margin: 0;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    background:
+        linear-gradient(
+            135deg,
+            #e8edf5,
+            #d9e1ec
+        );
+
+    min-height:
+        100vh;
+
+}
+
+
+.container {
+
+    width:
+        100%;
+
+    min-height:
+        100vh;
+
+    display:
+        flex;
+
+    justify-content:
+        center;
+
+    align-items:
+        center;
+
+}
+
+
+.card {
+
+    width:
+        400px;
+
+    background:
+        white;
+
+    padding:
+        35px;
+
+    border-radius:
+        18px;
+
+    box-shadow:
+        0 10px 35px
+        rgba(
+            0,
+            0,
+            0,
+            0.12
+        );
+
+}
+
+
+h1 {
+
+    text-align:
+        center;
+
+    margin-bottom:
+        10px;
+
+    font-size:
+        32px;
+
+}
+
+
+h2 {
+
+    margin-top:
+        30px;
+
+}
+
+
+.subtitle {
+
+    text-align:
+        center;
+
+    color:
+        #666;
+
+}
+
+
+input {
+
+    width:
+        100%;
+
+    padding:
+        14px;
+
+    margin-top:
+        12px;
+
+    border:
+        1px solid #ccc;
+
+    border-radius:
+        8px;
+
+    font-size:
+        15px;
+
+}
+
+
+input:focus {
+
+    outline:
+        none;
+
+    border-color:
+        #333;
+
+}
+
+
+button {
+
+    width:
+        100%;
+
+    margin-top:
+        14px;
+
+    padding:
+        14px;
+
+    border:
+        none;
+
+    border-radius:
+        8px;
+
+    background:
+        #333;
+
+    color:
+        white;
+
+    font-size:
+        15px;
+
+    cursor:
+        pointer;
+
+}
+
+
+button:hover {
+
+    background:
+        #555;
+
+}
+
+
+button:disabled {
+
+    opacity:
+        0.6;
+
+    cursor:
+        not-allowed;
+
+}
+
+
+.hidden {
+
+    display:
+        none !important;
+
+}
+
+
+.link-button {
+
+    width:
+        auto;
+
+    padding:
+        0;
+
+    margin:
+        0;
+
+    background:
+        transparent;
+
+    color:
+        #333;
+
+    text-decoration:
+        underline;
+
+    font-size:
+        inherit;
+
+}
+
+
+.link-button:hover {
+
+    background:
+        transparent;
+
+    color:
+        #666;
+
+}
+
+
+.message {
+
+    min-height:
+        20px;
+
+    margin-top:
+        15px;
+
+    text-align:
+        center;
+
+    color:
+        #444;
+
+}
+
+
+.switch-text {
+
+    text-align:
+        center;
+
+    margin-top:
+        20px;
+
+}
+
+
+.welcome {
+
+    text-align:
+        center;
+
+    font-size:
+        16px;
+
+}
+
+
+.logout-button {
+
+    background:
+        #8b2f2f;
+
+}
+
+
+.logout-button:hover {
+
+    background:
+        #a83b3b;
+
+}
+
+/* =========================================================
+   DASHBOARD
+   ========================================================= */
+
+.dashboard-container {
+
+    width:
+        700px;
+
+    max-width:
+        95%;
+
+}
+
+
+.dashboard-text {
+
+    margin-top:
+        10px;
+
+    color:
+        #555;
+
+}
+
+
+.dashboard-card {
+
+    margin-top:
+        20px;
+
+    padding:
+        20px;
+
+    border:
+        1px solid #e0e0e0;
+
+    border-radius:
+        12px;
+
+    background:
+        #fafafa;
+
+}
+
+
+.dashboard-card h3 {
+
+    margin-top:
+        0;
+
+}
+
+
+.table-container {
+
+    width:
+        100%;
+
+    margin-top:
+        15px;
+
+    overflow-x:
+        auto;
+
+}
+
+
+.table-container table {
+
+    width:
+        100%;
+
+    border-collapse:
+        collapse;
+
+    background:
+        white;
+
+}
+
+
+.table-container th,
+.table-container td {
+
+    padding:
+        12px;
+
+    border:
+        1px solid #ddd;
+
+    text-align:
+        left;
+
+    white-space:
+        nowrap;
+
+}
+
+
+.table-container th {
+
+    background:
+        #f0f0f0;
+
+    font-weight:
+        bold;
+
+}
+
+
+.table-container tr:hover {
+
+    background:
+        #f8f8f8;
+
+}
+
+
+#sessionHistory {
+
+    margin-top:
+        15px;
+
+}
+
+
+#dashboardMessage,
+#workspaceMessage,
+#adminMessage,
+#uploadMessage,
+#resetMessage {
+
+    min-height:
+        20px;
+
+    margin-top:
+        15px;
+
+    text-align:
+        center;
+
+}
+
+/* =========================================================
+   REGISTRATION INPUT HINT
+   ========================================================= */
+
+.input-hint {
+    font-size: 12px;
+    color: #777;
+    text-align: left;
+    margin-top: -8px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+
+/* =========================================================
+   PASSWORD WRAPPER
+   ========================================================= */
+
+.password-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding-right: 50px;
+    box-sizing: border-box;
+}
+
+
+/* =========================================================
+   PASSWORD SHOW / HIDE BUTTON
+   ========================================================= */
+
+.password-toggle {
+    position: absolute;
+
+    right: 10px;
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    width: auto;
+
+    margin: 0;
+    padding: 5px;
+
+    border: none;
+    background: transparent;
+
+    color: #555;
+
+    cursor: pointer;
+
+    font-size: 18px;
+}
+
+.password-toggle:hover {
+    background: transparent;
+    color: #222;
+}
+
+
+/* =========================================================
+   PASSWORD REQUIREMENTS
+   ========================================================= */
+
+.password-requirements {
+    text-align: left;
+
+    margin-top: -5px;
+    margin-bottom: 15px;
+
+    font-size: 13px;
+
+    line-height: 1.7;
+}
+
+.password-requirements div {
+    color: #777;
+}
+
+.password-requirements div.valid {
+    color: #198754;
+}
+
+.password-requirements div.invalid {
+    color: #777;
+}
