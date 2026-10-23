@@ -1,11 +1,14 @@
+
 package com.privacyshield.controller;
 
 import com.privacyshield.model.Session;
 import com.privacyshield.repository.SessionRepository;
+import com.privacyshield.service.BrowserManager;
+import com.privacyshield.service.WorkspaceScanMonitor;
 import com.privacyshield.workspace.WorkspaceManager;
 
 import jakarta.servlet.http.HttpSession;
-import com.privacyshield.service.BrowserManager;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
@@ -26,17 +29,19 @@ public class SessionController {
     private final SessionRepository sessionRepository;
     private final WorkspaceManager workspaceManager;
     private final BrowserManager browserManager;
+    private final WorkspaceScanMonitor workspaceScanMonitor;
 
     public SessionController(
-        SessionRepository sessionRepository,
-        WorkspaceManager workspaceManager,
-        BrowserManager browserManager) {
+            SessionRepository sessionRepository,
+            WorkspaceManager workspaceManager,
+            BrowserManager browserManager,
+            WorkspaceScanMonitor workspaceScanMonitor) {
 
-                this.sessionRepository = sessionRepository;
-                this.workspaceManager = workspaceManager;
-                        this.browserManager = browserManager;
-        }
-
+        this.sessionRepository = sessionRepository;
+        this.workspaceManager = workspaceManager;
+        this.browserManager = browserManager;
+        this.workspaceScanMonitor = workspaceScanMonitor;
+    }
 
     // =========================================================
     // START SECURE SESSION
@@ -46,492 +51,275 @@ public class SessionController {
     public Map<String, Object> startSession(
             HttpSession httpSession) {
 
-        Map<String, Object> response =
-                new HashMap<>();
+        Map<String, Object> response = new HashMap<>();
 
         Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId"
-                );
+                (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
-            response.put(
-                    "status",
-                    "NOT_LOGGED_IN"
-            );
-
-            response.put(
-                    "message",
-                    "Please login first."
-            );
+            response.put("status", "NOT_LOGGED_IN");
+            response.put("message", "Please login first.");
 
             return response;
         }
 
         String sessionId = null;
+        boolean workspaceCreated = false;
 
         try {
-
-            // =================================================
-            // CHECK EXISTING ACTIVE SESSION
-            // =================================================
-
+            // Check for an existing active session.
             Optional<Session> activeSession =
-                    sessionRepository
-                            .findByUserIdAndStatus(
-                                    userId,
-                                    "ACTIVE"
-                            );
+                    sessionRepository.findByUserIdAndStatus(
+                            userId, "ACTIVE");
 
             if (activeSession.isPresent()) {
 
-                Session session =
-                        activeSession.get();
+                Session session = activeSession.get();
 
-                // Verify physical workspace still exists
                 if (workspaceManager.workspaceExists(
                         session.getSessionId())) {
 
+                    // Ensure monitoring is active.
+                    workspaceScanMonitor.startMonitoring(
+                            session.getSessionId(),
+                            session.getWorkspacePath());
+
                     response.put(
                             "status",
-                            "SESSION_ALREADY_ACTIVE"
-                    );
+                            "SESSION_ALREADY_ACTIVE");
 
                     response.put(
                             "message",
-                            "Secure workspace already active."
-                    );
+                            "Secure workspace already active. "
+                                    + "Automatic scanning enabled.");
 
                     response.put(
                             "sessionId",
-                            session.getSessionId()
-                    );
+                            session.getSessionId());
 
                     response.put(
                             "workspacePath",
-                            session.getWorkspacePath()
-                    );
+                            session.getWorkspacePath());
 
                     return response;
                 }
 
-                // =================================================
-                // STALE DATABASE SESSION
-                // =================================================
-
-                LocalDateTime now =
-                        LocalDateTime.now();
+                // Mark a stale database session as expired.
+                LocalDateTime now = LocalDateTime.now();
 
                 session.setEndTime(now);
-
                 session.setLastActivityTime(now);
+                session.setStatus("EXPIRED");
 
-                session.setStatus(
-                        "EXPIRED"
-                );
-
-                sessionRepository.save(
-                        session
-                );
+                sessionRepository.save(session);
 
                 logger.warn(
                         "Stale active session marked EXPIRED: {}",
-                        session.getSessionId()
-                );
+                        session.getSessionId());
             }
 
-
-            // =================================================
-            // CREATE WINDOWS WORKSPACE
-            // =================================================
-
-            sessionId =
-                    workspaceManager.createWorkspace();
+            // Create the Windows workspace.
+            sessionId = workspaceManager.createWorkspace();
+            workspaceCreated = true;
 
             String workspacePath =
                     workspaceManager
-                            .getWorkspacePath(
-                                    sessionId
-                            )
+                            .getWorkspacePath(sessionId)
                             .toString();
 
+            // Create the database session.
+            LocalDateTime now = LocalDateTime.now();
 
-            // =================================================
-            // CREATE DATABASE SESSION
-            // =================================================
+            Session session = new Session();
 
-            LocalDateTime now =
-                    LocalDateTime.now();
+            session.setSessionId(sessionId);
+            session.setUserId(userId);
+            session.setContainerName("WINDOWS-WORKSPACE");
+            session.setDesktopPort(0);
+            session.setWorkspacePath(workspacePath);
+            session.setStartTime(now);
+            session.setLastActivityTime(now);
+            session.setStatus("ACTIVE");
 
-            Session session =
-                    new Session();
+            sessionRepository.save(session);
 
-            session.setSessionId(
-                    sessionId
-            );
+            // Start automatic monitoring of files and downloads.
+            workspaceScanMonitor.startMonitoring(
+                    sessionId,
+                    workspacePath);
 
-            session.setUserId(
-                    userId
-            );
-
-            // Managed Windows workspace
-            // instead of Docker/VM.
-            session.setContainerName(
-                    "WINDOWS-WORKSPACE"
-            );
-
-            session.setDesktopPort(
-                    0
-            );
-
-            session.setWorkspacePath(
-                    workspacePath
-            );
-
-            session.setStartTime(
-                    now
-            );
-
-            session.setLastActivityTime(
-                    now
-            );
-
-            session.setStatus(
-                    "ACTIVE"
-            );
-
-
-            // =================================================
-            // SAVE SESSION
-            // =================================================
-
-            sessionRepository.save(
-                    session
-            );
-
-
-            // =================================================
-            // SUCCESS
-            // =================================================
-
-            response.put(
-                    "status",
-                    "SESSION_STARTED"
-            );
+            response.put("status", "SESSION_STARTED");
 
             response.put(
                     "message",
-                    "Secure Windows workspace created."
-            );
+                    "Secure Windows workspace created. "
+                            + "Automatic file scanning enabled.");
 
-            response.put(
-                    "sessionId",
-                    sessionId
-            );
-
-            response.put(
-                    "workspacePath",
-                    workspacePath
-            );
+            response.put("sessionId", sessionId);
+            response.put("workspacePath", workspacePath);
 
             return response;
 
-
         } catch (Exception e) {
-
-            // =================================================
-            // ROLLBACK WORKSPACE
-            // =================================================
-
-            if (sessionId != null) {
-
-                try {
-
-                    workspaceManager.deleteWorkspace(
-                            sessionId
-                    );
-
-                } catch (IOException cleanupException) {
-
-                    logger.error(
-                            "Failed to rollback workspace: {}",
-                            sessionId,
-                            cleanupException
-                    );
-                }
-            }
 
             logger.error(
                     "Failed to start session for user: {}",
                     userId,
-                    e
-            );
+                    e);
 
-            response.put(
-                    "status",
-                    "SESSION_FAILED"
-            );
+            if (sessionId != null) {
+                workspaceScanMonitor.stopMonitoring(sessionId);
+            }
+
+            // Roll back a newly created workspace.
+            if (workspaceCreated && sessionId != null) {
+                try {
+                    workspaceManager.deleteWorkspace(sessionId);
+
+                } catch (IOException cleanupException) {
+                    logger.error(
+                            "Failed to roll back workspace: {}",
+                            sessionId,
+                            cleanupException);
+                }
+            }
+
+            response.put("status", "SESSION_FAILED");
 
             response.put(
                     "message",
-                    "Unable to create secure workspace."
-            );
+                    "Unable to create workspace or start automatic "
+                            + "scanning. Check application logs.");
 
             return response;
         }
     }
-
 
     // =========================================================
     // END SECURE SESSION
     // =========================================================
 
-    @PostMapping("/end")
-    public Map<String, Object> endSession(
-            @RequestParam String sessionId,
-            HttpSession httpSession) {
+    
+@PostMapping("/end")
+public Map<String, Object> endSession(
+        @RequestParam String sessionId,
+        HttpSession httpSession) {
 
-        Map<String, Object> response =
-                new HashMap<>();
+    Map<String, Object> response = new HashMap<>();
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId"
-                );
+    Integer userId =
+            (Integer) httpSession.getAttribute("userId");
 
-        if (userId == null) {
+    if (userId == null) {
+        response.put("status", "NOT_LOGGED_IN");
+        response.put("message", "Please login first.");
+        return response;
+    }
 
-            response.put(
-                    "status",
-                    "NOT_LOGGED_IN"
-            );
+    if (sessionId == null
+            || sessionId.isBlank()
+            || !sessionId.matches("^SESSION-[a-fA-F0-9-]+$")) {
 
-            response.put(
-                    "message",
-                    "Please login first."
-            );
+        response.put("status", "INVALID_SESSION_ID");
+        response.put("message", "Invalid session ID.");
+        return response;
+    }
 
+    try {
+        Optional<Session> optionalSession =
+                sessionRepository.findById(sessionId);
+
+        if (optionalSession.isEmpty()) {
+            response.put("status", "SESSION_NOT_FOUND");
+            response.put("message", "Session not found.");
             return response;
         }
 
+        Session session = optionalSession.get();
 
-        // =================================================
-        // VALIDATE SESSION ID
-        // =================================================
+        if (session.getUserId() == null
+                || !session.getUserId().equals(userId)) {
 
-        if (sessionId == null
-                || sessionId.isBlank()) {
-
-            response.put(
-                    "status",
-                    "INVALID_SESSION_ID"
-            );
-
-            response.put(
-                    "message",
-                    "Session ID cannot be empty."
-            );
-
+            response.put("status", "ACCESS_DENIED");
+            response.put("message", "You cannot access this session.");
             return response;
         }
 
-        if (!sessionId.matches(
-                "^SESSION-[a-fA-F0-9-]+$")) {
-
-            response.put(
-                    "status",
-                    "INVALID_SESSION_ID"
-            );
-
-            response.put(
-                    "message",
-                    "Invalid session ID."
-            );
-
+        if (!"ACTIVE".equals(session.getStatus())) {
+            response.put("status", "SESSION_ALREADY_ENDED");
+            response.put("message", "Session is already ended.");
             return response;
         }
 
+        workspaceScanMonitor.stopMonitoring(sessionId);
 
+        boolean profileDeleted = false;
+        boolean workspaceDeleted = false;
+
+        // Attempt browser-profile cleanup.
         try {
-
-            // =================================================
-            // FIND SESSION
-            // =================================================
-
-            Optional<Session> optionalSession =
-                    sessionRepository.findById(
-                            sessionId
-                    );
-
-            if (optionalSession.isEmpty()) {
-
-                response.put(
-                        "status",
-                        "SESSION_NOT_FOUND"
-                );
-
-                response.put(
-                        "message",
-                        "Session not found."
-                );
-
-                return response;
-            }
-
-            Session session =
-                    optionalSession.get();
-
-
-            // =================================================
-            // OWNERSHIP CHECK
-            // =================================================
-
-            if (session.getUserId() == null
-                    || !session.getUserId()
-                    .equals(userId)) {
-
-                response.put(
-                        "status",
-                        "ACCESS_DENIED"
-                );
-
-                response.put(
-                        "message",
-                        "You cannot access this session."
-                );
-
-                return response;
-            }
-
-
-            // =================================================
-            // CHECK ACTIVE
-            // =================================================
-
-            if (!"ACTIVE".equals(
-                    session.getStatus())) {
-
-                response.put(
-                        "status",
-                        "SESSION_ALREADY_ENDED"
-                );
-
-                response.put(
-                        "message",
-                        "Session is already ended."
-                );
-
-                return response;
-            }
-
-
-            // =================================================
-// CLOSE SECURE BROWSER
-// =================================================
-
-browserManager.closeSecureBrowser(sessionId);
-
-
-// =================================================
-// DELETE BROWSER PROFILE
-// =================================================
-
-browserManager.deleteBrowserProfile(sessionId);
-
-
-// =================================================
-// DELETE WINDOWS WORKSPACE
-// =================================================
-
-boolean deleted =
-        workspaceManager.deleteWorkspace(
-                sessionId
-        );
-
-            if (!deleted) {
-
-                response.put(
-                        "status",
-                        "CLEANUP_FAILED"
-                );
-
-                response.put(
-                        "message",
-                        "Workspace cleanup failed."
-                );
-
-                return response;
-            }
-
-
-            // =================================================
-            // UPDATE DATABASE
-            // =================================================
-
-            LocalDateTime now =
-                    LocalDateTime.now();
-
-            session.setEndTime(
-                    now
-            );
-
-            session.setLastActivityTime(
-                    now
-            );
-
-            session.setStatus(
-                    "COMPLETED"
-            );
-
-            sessionRepository.save(
-                    session
-            );
-
-
-            // =================================================
-            // SUCCESS
-            // =================================================
-
-            response.put(
-                    "status",
-                    "SESSION_ENDED"
-            );
-
-            response.put(
-                    "message",
-                    "Secure workspace deleted successfully."
-            );
-
-            response.put(
-                    "sessionId",
-                    sessionId
-            );
-
-            return response;
-
+            browserManager.deleteBrowserProfile(sessionId);
+            profileDeleted = true;
 
         } catch (Exception e) {
-
             logger.error(
-                    "Failed to end session: {}",
+                    "Browser profile cleanup failed for session: {}",
                     sessionId,
-                    e
-            );
+                    e);
+        }
 
-            response.put(
-                    "status",
-                    "SESSION_END_FAILED"
-            );
+        // Always attempt workspace cleanup.
+        try {
+            workspaceDeleted =
+                    workspaceManager.deleteWorkspace(sessionId);
 
+        } catch (Exception e) {
+            logger.error(
+                    "Workspace cleanup failed for session: {}",
+                    sessionId,
+                    e);
+        }
+
+        // A workspace deletion failure must not be hidden.
+        if (!workspaceDeleted) {
+            response.put("status", "CLEANUP_FAILED");
             response.put(
                     "message",
-                    "Unable to end session."
-            );
-
+                    "Workspace cleanup failed. Please check application logs.");
+            response.put("sessionId", sessionId);
             return response;
         }
+
+        // Workspace is deleted. Record session completion even if
+        // browser-profile cleanup failed, but log that failure above.
+        LocalDateTime now = LocalDateTime.now();
+
+        session.setEndTime(now);
+        session.setLastActivityTime(now);
+        session.setStatus("COMPLETED");
+
+        sessionRepository.save(session);
+
+        response.put("status", "SESSION_ENDED");
+        response.put(
+                "message",
+                "Secure session ended and workspace cleanup completed.");
+        response.put("sessionId", sessionId);
+        response.put("profileDeleted", profileDeleted);
+
+        return response;
+
+    } catch (Exception e) {
+        logger.error("Failed to end session: {}", sessionId, e);
+
+        response.put("status", "SESSION_END_FAILED");
+        response.put(
+                "message",
+                "Unable to end session. Check application logs.");
+
+        return response;
     }
+}
 
 
     // =========================================================
@@ -539,26 +327,17 @@ boolean deleted =
     // =========================================================
 
     @GetMapping("/my-sessions")
-    public Object getMySessions(
-            HttpSession httpSession) {
+    public Object getMySessions(HttpSession httpSession) {
 
         Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId"
-                );
+                (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
             return Map.of(
-                    "status",
-                    "NOT_LOGGED_IN",
-                    "message",
-                    "Please login first."
-            );
+                    "status", "NOT_LOGGED_IN",
+                    "message", "Please login first.");
         }
 
-        return sessionRepository.findByUserId(
-                userId
-        );
+        return sessionRepository.findByUserId(userId);
     }
 }

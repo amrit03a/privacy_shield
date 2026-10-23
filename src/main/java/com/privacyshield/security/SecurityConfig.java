@@ -1,81 +1,62 @@
+
 package com.privacyshield.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
-@EnableWebSecurity
 public class SecurityConfig {
 
     @Bean
-    public SessionAuthenticationFilter sessionAuthenticationFilter() {
-        return new SessionAuthenticationFilter();
-    }
-
-    @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            SessionAuthenticationFilter sessionAuthenticationFilter
-    ) throws Exception {
+            HttpSecurity http) throws Exception {
 
         http
-                .csrf(AbstractHttpConfigurer::disable)
+            // Current project uses session-based API authentication.
+            .csrf(csrf -> csrf.disable())
 
-                .authorizeHttpRequests(auth -> auth
+            // Restore authentication from the existing HTTP session.
+            .addFilterBefore(
+                new SessionAuthenticationFilter(),
+                UsernamePasswordAuthenticationFilter.class
+            )
 
-                        // =========================
-                        // PUBLIC PAGES
-                        // =========================
-                        .requestMatchers(
-                                "/",
-                                "/index.html",
-                                "/dashboard.html",
-                                "/workspace.html",
-                                "/admin.html",
-                                "/admin-dashboard.html",
-                                "/css/**",
-                                "/js/**",
+            .authorizeHttpRequests(auth -> auth
 
-                                // Database test endpoint
-                                "/test-db",
+                // Public pages and static resources
+                .requestMatchers(
+                    "/",
+                    "/index.html",
+                    "/login.html",
+                    "/register.html",
+                    "/dashboard.html",
+                    "/workspace.html",
+                    "/css/**",
+                    "/js/**",
+                    "/images/**",
+                    "/favicon.ico",
+                    "/error"
+                ).permitAll()
 
-                                // Error page
-                                "/error"
-                        ).permitAll()
+                // Public login and registration endpoints
+                .requestMatchers(
+                    "/api/users/login",
+                    "/api/users/register",
+                    "/api/admin/login"
+                ).permitAll()
 
+                // All other API endpoints require authentication
+                .requestMatchers("/api/**").authenticated()
 
-                        // =========================
-                        // PUBLIC AUTH APIs
-                        // =========================
-                        .requestMatchers(
-                                "/api/users/register",
-                                "/api/users/login",
-                                "/api/admin/login"
-                        ).permitAll()
+                // Allow non-API frontend resources
+                .anyRequest().permitAll()
+            )
 
-
-                        // =========================
-                        // EVERYTHING ELSE
-                        // =========================
-                        .anyRequest().authenticated()
-                )
-
-                // Disable Spring's default login page.
-                .formLogin(AbstractHttpConfigurer::disable)
-
-                // Disable HTTP Basic authentication.
-                .httpBasic(AbstractHttpConfigurer::disable)
-
-                // Restore authentication from our HTTP session.
-                .addFilterBefore(
-                        sessionAuthenticationFilter,
-                        AuthorizationFilter.class
-                );
+            .formLogin(form -> form.disable())
+            .httpBasic(basic -> basic.disable());
 
         return http.build();
     }

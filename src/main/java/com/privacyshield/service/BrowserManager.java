@@ -4,26 +4,31 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class BrowserManager {
 
-    private static final String BROWSER_PROFILES_FOLDER =
-            "C:/privacy-shield-browser-profiles";
+    private static final Path PROFILES_BASE =
+            Path.of("C:/privacy-shield-browser-profiles")
+                    .toAbsolutePath()
+                    .normalize();
 
-    private static final String WINDOWS_BROWSER_USER =
+    private static final Path LAUNCHER_BASE =
+            Path.of("C:/PrivacyShield-Test")
+                    .toAbsolutePath()
+                    .normalize();
+
+    private static final String BROWSER_USER =
             "PrivacyShieldUser";
 
-    private static final String WINDOWS_BROWSER_USER_FULL =
+    private static final String BROWSER_USER_FULL =
             "AMRIT_LAPTOP\\PrivacyShieldUser";
-
-    private final Map<String, String> browserTypes =
-            new ConcurrentHashMap<>();
-
 
     // =========================================================
     // OPEN SECURE BROWSER
@@ -33,427 +38,459 @@ public class BrowserManager {
             String sessionId,
             String workspacePath) throws IOException {
 
-        // -----------------------------------------------------
-        // 1. Validate session ID
-        // -----------------------------------------------------
-
         validateSessionId(sessionId);
 
-
-        // -----------------------------------------------------
-        // 2. Validate workspace
-        // -----------------------------------------------------
-
-        if (workspacePath == null
-                || workspacePath.isBlank()) {
-
+        if (workspacePath == null || workspacePath.isBlank()) {
             throw new IllegalArgumentException(
-                    "Workspace path is not available."
-            );
+                    "Workspace path is not available.");
         }
 
+        Path workspace = Path.of(workspacePath)
+                .toAbsolutePath()
+                .normalize();
 
-        Path workspace =
-                Path.of(workspacePath)
-                        .toAbsolutePath()
-                        .normalize();
-
-
-        if (!Files.exists(workspace)
-                || !Files.isDirectory(workspace)) {
-
+        if (!Files.isDirectory(workspace)) {
             throw new IOException(
-                    "Secure workspace does not exist."
-            );
+                    "Secure workspace does not exist: " + workspace);
         }
 
+        Path downloads = workspace.resolve("downloads").normalize();
 
-        // -----------------------------------------------------
-        // 3. Create downloads directory
-        // -----------------------------------------------------
-
-        Path downloadsDirectory =
-                workspace
-                        .resolve("downloads")
-                        .normalize();
-
-
-        if (!downloadsDirectory.startsWith(workspace)) {
-
-            throw new SecurityException(
-                    "Invalid downloads path."
-            );
+        if (!downloads.startsWith(workspace)) {
+            throw new SecurityException("Invalid downloads path.");
         }
 
+        Files.createDirectories(downloads);
+        Files.createDirectories(PROFILES_BASE);
+        Files.createDirectories(LAUNCHER_BASE);
 
-        Files.createDirectories(
-                downloadsDirectory
-        );
-
-
-        // -----------------------------------------------------
-        // 4. Browser profile base directory
-        // -----------------------------------------------------
-
-        Path browserProfilesBase =
-                Path.of(BROWSER_PROFILES_FOLDER)
-                        .toAbsolutePath()
-                        .normalize();
-
-
-        Files.createDirectories(
-                browserProfilesBase
-        );
-
-
-        // -----------------------------------------------------
-        // 5. Session-specific browser profile
-        // -----------------------------------------------------
-
-        Path profileDirectory =
-                browserProfilesBase
-                        .resolve(sessionId)
-                        .normalize();
-
-
-        if (!profileDirectory.startsWith(
-                browserProfilesBase)) {
-
-            throw new SecurityException(
-                    "Invalid browser profile path."
-            );
-        }
-
-
-        Files.createDirectories(
-                profileDirectory
-        );
-
-
-        // -----------------------------------------------------
-        // 6. Configure downloads
-        // -----------------------------------------------------
-
-        configureDownloadDirectory(
-                profileDirectory,
-                downloadsDirectory
-        );
-
-
-        // -----------------------------------------------------
-        // 7. Find installed browser
-        // -----------------------------------------------------
-
-        String browserPath =
-                findBrowser();
-
-
-        String browserName =
-                getBrowserName(browserPath);
-
-
-        // -----------------------------------------------------
-        // 8. Close previous secure browser
-        // -----------------------------------------------------
+        Path profile = getProfileDirectory(sessionId);
 
         closeSecureBrowser(sessionId);
 
+        Files.createDirectories(profile);
 
-        // -----------------------------------------------------
-        // 9. Create temporary launcher directory
-        // -----------------------------------------------------
+        configureProfilePermissions(profile);
+        configureDownloadDirectory(profile, downloads);
 
-        Path launcherDirectory =
-                Path.of("C:/PrivacyShield-Test")
-                        .toAbsolutePath()
-                        .normalize();
+        String browserPath = findBrowser();
 
+        Path launcher = LAUNCHER_BASE
+                .resolve("launch-" + sessionId + ".bat")
+                .normalize();
 
-        Files.createDirectories(
-                launcherDirectory
-        );
-
-
-        // -----------------------------------------------------
-        // 10. Create session-specific BAT file
-        // -----------------------------------------------------
-
-        Path launcherFile =
-                launcherDirectory
-                        .resolve(
-                                "launch-"
-                                        + sessionId
-                                        + ".bat"
-                        )
-                        .normalize();
-
-
-        if (!launcherFile.startsWith(
-                launcherDirectory)) {
-
-            throw new SecurityException(
-                    "Invalid launcher path."
-            );
+        if (!launcher.startsWith(LAUNCHER_BASE)) {
+            throw new SecurityException("Invalid launcher path.");
         }
 
-
-        // -----------------------------------------------------
-        // 11. Build browser command
-        // -----------------------------------------------------
-
-        String browserCommand =
-                "\"" + browserPath + "\" "
-                        + "--user-data-dir=\""
-                        + profileDirectory
-                        + "\" "
-                        + "--no-first-run "
-                        + "--no-default-browser-check "
-                        + "--disable-sync "
-                        + "--new-window";
-
-
-        // -----------------------------------------------------
-        // 12. Write BAT file
-        // -----------------------------------------------------
-
-        String batContent =
+        String bat =
                 "@echo off\r\n"
-                        + browserCommand
-                        + "\r\n";
-
+                + "start \"\" /B \""
+                + browserPath
+                + "\" --user-data-dir=\""
+                + profile
+                + "\" --no-first-run"
+                + " --no-default-browser-check"
+                + " --disable-sync --new-window\r\n"
+                + "exit /b\r\n";
 
         Files.writeString(
-                launcherFile,
-                batContent,
-                StandardCharsets.UTF_8
-        );
+                launcher,
+                bat,
+                StandardCharsets.UTF_8);
 
+        String command = "cmd.exe /c \"" + launcher + "\"";
 
-        // -----------------------------------------------------
-        // 13. IMPORTANT:
-        //     Entire CMD command must be ONE runas argument
-        // -----------------------------------------------------
-
-        String commandForRunas =
-                "cmd.exe /c \""
-                        + launcherFile
-                        + "\"";
-
-
-        // -----------------------------------------------------
-        // 14. Launch as PrivacyShieldUser
-        // -----------------------------------------------------
-
-        ProcessBuilder processBuilder =
-                new ProcessBuilder(
-                        "runas",
-                        "/user:" + WINDOWS_BROWSER_USER,
-                        "/savecred",
-                        commandForRunas
-                );
-
-
-        processBuilder.redirectErrorStream(true);
-
-
-        Process process =
-                processBuilder.start();
-
-
-        // -----------------------------------------------------
-        // 15. Read runas output
-        // -----------------------------------------------------
-
-        String output;
+        Process process = new ProcessBuilder(
+                "runas",
+                "/user:" + BROWSER_USER,
+                "/savecred",
+                command)
+                .redirectErrorStream(true)
+                .start();
 
         try {
-
-            output =
-                    new String(
-                            process.getInputStream()
-                                    .readAllBytes(),
-                            StandardCharsets.UTF_8
-                    );
-
-
-            int exitCode =
-                    process.waitFor();
-
-
-            if (exitCode != 0) {
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
 
                 throw new IOException(
-                        "Unable to launch secure browser as "
-                                + WINDOWS_BROWSER_USER
-                                + ". runas output: "
-                                + output
-                );
+                        "Timed out launching the secure browser.");
             }
 
+            String output = new String(
+                    process.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+
+            if (process.exitValue() != 0) {
+                throw new IOException(
+                        "Browser launch failed. Check the Windows "
+                        + "account credentials and permissions. "
+                        + output);
+            }
 
         } catch (InterruptedException e) {
-
+            process.destroyForcibly();
             Thread.currentThread().interrupt();
 
             throw new IOException(
-                    "Browser launch was interrupted.",
-                    e
-            );
+                    "Browser launch was interrupted.", e);
         }
-        // -----------------------------------------------------
-        // 16. Remember browser type
-        // -----------------------------------------------------
+    }
 
-        browserTypes.put(
-                sessionId,
-                browserName
-        );
-
-            }
     // =========================================================
     // CLOSE SECURE BROWSER
     // =========================================================
 
-    public void closeSecureBrowser(
-            String sessionId) {
+    public void closeSecureBrowser(String sessionId) {
 
         validateSessionId(sessionId);
 
+        Path profile = getProfileDirectory(sessionId);
+        String escapedProfile = profile.toString()
+                .replace("'", "''");
 
-        String browserName =
-                browserTypes.remove(
-                        sessionId
-                );
+        String script =
+                "$ErrorActionPreference = 'Stop'; "
+                + "$profile = '" + escapedProfile + "'; "
+                + "$names = @('chrome.exe','msedge.exe'); "
+                + "$all = Get-CimInstance Win32_Process; "
+                + "$matches = @($all | Where-Object { "
+                + "$_.Name -in $names -and $_.CommandLine -and "
+                + "$_.CommandLine.Contains($profile) }); "
+                + "foreach ($p in $matches) { "
+                + "Stop-Process -Id $p.ProcessId -Force "
+                + "-ErrorAction SilentlyContinue }; "
+                + "Start-Sleep -Milliseconds 500; "
+                + "$left = @(Get-CimInstance Win32_Process | "
+                + "Where-Object { $_.Name -in $names -and "
+                + "$_.CommandLine -and "
+                + "$_.CommandLine.Contains($profile) }); "
+                + "if ($left.Count -gt 0) { exit 2 } else { exit 0 }";
 
-
-        if ("chrome".equals(browserName)) {
-
-            closeBrowserProcess(
-                    "chrome.exe"
-            );
-
-        } else if ("edge".equals(browserName)) {
-
-            closeBrowserProcess(
-                    "msedge.exe"
-            );
-
-        } else {
-
-            closeBrowserProcess(
-                    "chrome.exe"
-            );
-
-            closeBrowserProcess(
-                    "msedge.exe"
-            );
-        }
+        runPowerShell(script, 15, profile.toString());
     }
 
+    private void runPowerShell(
+            String script,
+            int timeoutSeconds,
+            String description) {
 
-    // =========================================================
-    // CLOSE BROWSER PROCESS
-    // =========================================================
-
-    private void closeBrowserProcess(
-            String processName) {
+        Process process = null;
 
         try {
+            process = new ProcessBuilder(
+                    "powershell.exe",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    script)
+                    .redirectErrorStream(true)
+                    .start();
 
-            ProcessBuilder processBuilder =
-                    new ProcessBuilder(
-                            "taskkill",
-                            "/F",
-                            "/T",
-                            "/FI",
-                            "USERNAME eq "
-                                    + WINDOWS_BROWSER_USER_FULL,
-                            "/IM",
-                            processName
-                    );
+            final Process child = process;
 
+            Thread outputReader = new Thread(() -> {
+                try {
+                    child.getInputStream().transferTo(
+                            java.io.OutputStream.nullOutputStream());
+                } catch (IOException ignored) {
+                    // The process may already have exited.
+                }
+            });
 
-            Process process =
-                    processBuilder.start();
+            outputReader.setDaemon(true);
+            outputReader.start();
 
+            boolean finished = process.waitFor(
+                    timeoutSeconds, TimeUnit.SECONDS);
 
-            process.waitFor();
+            if (!finished) {
+                process.destroyForcibly();
 
+                throw new IllegalStateException(
+                        "Timed out closing browser for profile: "
+                        + description);
+            }
+
+            outputReader.join(1000);
+
+            if (process.exitValue() != 0) {
+                throw new IllegalStateException(
+                        "Browser shutdown command failed for: "
+                        + description
+                        + ". Exit code: "
+                        + process.exitValue());
+            }
 
         } catch (IOException e) {
-
-            System.err.println(
-                    "Unable to close "
-                            + processName
-                            + ": "
-                            + e.getMessage()
-            );
-
+            throw new IllegalStateException(
+                    "Unable to execute browser shutdown command.", e);
 
         } catch (InterruptedException e) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
 
             Thread.currentThread().interrupt();
 
-            System.err.println(
-                    "Browser close interrupted."
-            );
+            throw new IllegalStateException(
+                    "Browser shutdown was interrupted.", e);
         }
     }
 
+    // =========================================================
+    // DELETE BROWSER PROFILE
+    // =========================================================
+
+    public void deleteBrowserProfile(String sessionId) {
+
+        validateSessionId(sessionId);
+
+        closeSecureBrowser(sessionId);
+
+        Path profileDirectory = getProfileDirectory(sessionId);
+
+        if (!Files.exists(profileDirectory)) {
+            return;
+        }
+
+        IOException lastError = null;
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                deleteDirectoryTree(profileDirectory);
+                return;
+
+            } catch (IOException e) {
+                lastError = e;
+
+                try {
+                    repairProfilePermissions(profileDirectory);
+                } catch (Exception permissionError) {
+                    e.addSuppressed(permissionError);
+                }
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+
+                    throw new IllegalStateException(
+                            "Profile deletion was interrupted.",
+                            interrupted);
+                }
+            }
+        }
+
+        throw new IllegalStateException(
+                "Unable to delete browser profile: "
+                + profileDirectory,
+                lastError);
+    }
+
+    // =========================================================
+    // PROFILE PATH VALIDATION
+    // =========================================================
+
+    private Path getProfileDirectory(String sessionId) {
+
+        validateSessionId(sessionId);
+
+        Path profile = PROFILES_BASE
+                .resolve(sessionId)
+                .normalize();
+
+        if (!profile.startsWith(PROFILES_BASE)
+                || profile.equals(PROFILES_BASE)) {
+            throw new SecurityException(
+                    "Invalid browser profile path.");
+        }
+
+        return profile;
+    }
+
+    private void validateSessionId(String sessionId) {
+
+        if (sessionId == null
+                || !sessionId.matches(
+                        "^SESSION-[a-fA-F0-9-]+$")) {
+            throw new SecurityException(
+                    "Invalid session ID.");
+        }
+    }
+
+    // =========================================================
+    // CONFIGURE PROFILE PERMISSIONS
+    // =========================================================
+
+    private void configureProfilePermissions(
+            Path profile) throws IOException {
+
+        String currentUser = getCurrentWindowsUser();
+
+        runWindowsCommand(
+                30,
+                "icacls.exe",
+                profile.toString(),
+                "/grant",
+                currentUser + ":(OI)(CI)F",
+                BROWSER_USER_FULL + ":(OI)(CI)M",
+                "/T",
+                "/C");
+    }
+
+    // =========================================================
+    // REPAIR PROFILE PERMISSIONS
+    // =========================================================
+
+    
+private void repairProfilePermissions(
+        Path profileDirectory) throws IOException {
+
+    if (!Files.exists(profileDirectory)) {
+        return;
+    }
+
+    Path profile = profileDirectory.toAbsolutePath().normalize();
+
+    // Step 1: Take ownership of this session profile.
+    runWindowsCommand(
+            60,
+            "takeown.exe",
+            "/F",
+            profile.toString(),
+            "/R",
+            "/D",
+            "Y"
+    );
+
+    // Step 2: Grant the application account full control.
+    String currentUser = getCurrentWindowsUser();
+
+    runWindowsCommand(
+            60,
+            "icacls.exe",
+            profile.toString(),
+            "/grant",
+            currentUser + ":(OI)(CI)F",
+            "/T",
+            "/C"
+    );
+
+    // Step 3: Restore access for the dedicated browser account.
+    runWindowsCommand(
+            60,
+            "icacls.exe",
+            profile.toString(),
+            "/grant",
+            BROWSER_USER_FULL + ":(OI)(CI)F",
+            "/T",
+            "/C"
+    );
+}
+
+
+    private String getCurrentWindowsUser() throws IOException {
+
+        String domain = System.getenv("USERDOMAIN");
+        String username = System.getenv("USERNAME");
+
+        if (username == null || username.isBlank()) {
+            throw new IOException(
+                    "Cannot determine the current Windows user.");
+        }
+
+        return domain == null || domain.isBlank()
+                ? username
+                : domain + "\\" + username;
+    }
+
+    // =========================================================
+    // RUN WINDOWS COMMAND
+    // =========================================================
+
+    private void runWindowsCommand(
+            int timeoutSeconds,
+            String... command) throws IOException {
+
+        Process process = new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start();
+
+        Thread outputReader = new Thread(() -> {
+            try {
+                process.getInputStream().transferTo(
+                        java.io.OutputStream.nullOutputStream());
+            } catch (IOException ignored) {
+                // The process may already have exited.
+            }
+        });
+
+        outputReader.setDaemon(true);
+        outputReader.start();
+
+        try {
+            if (!process.waitFor(
+                    timeoutSeconds, TimeUnit.SECONDS)) {
+
+                process.destroyForcibly();
+
+                throw new IOException(
+                        "Timed out running: " + command[0]);
+            }
+
+            outputReader.join(1000);
+
+            if (process.exitValue() != 0) {
+                throw new IOException(
+                        command[0]
+                        + " failed with exit code "
+                        + process.exitValue());
+            }
+
+        } catch (InterruptedException e) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+
+            throw new IOException(
+                    "Windows command was interrupted.", e);
+        }
+    }
 
     // =========================================================
     // CONFIGURE DOWNLOAD DIRECTORY
     // =========================================================
 
     private void configureDownloadDirectory(
-            Path profileDirectory,
-            Path downloadsDirectory)
-            throws IOException {
+            Path profile,
+            Path downloads) throws IOException {
 
-        Path defaultProfile =
-                profileDirectory
-                        .resolve("Default")
-                        .normalize();
+        Path defaultProfile = profile
+                .resolve("Default")
+                .normalize();
 
-
-        if (!defaultProfile.startsWith(
-                profileDirectory)) {
-
+        if (!defaultProfile.startsWith(profile)) {
             throw new SecurityException(
-                    "Invalid browser profile path."
-            );
+                    "Invalid default profile path.");
         }
 
+        Files.createDirectories(defaultProfile);
 
-        Files.createDirectories(
-                defaultProfile
-        );
+        Path preferences = defaultProfile
+                .resolve("Preferences")
+                .normalize();
 
-
-        Path preferencesFile =
-                defaultProfile
-                        .resolve("Preferences")
-                        .normalize();
-
-
-        if (!preferencesFile.startsWith(
-                defaultProfile)) {
-
+        if (!preferences.startsWith(defaultProfile)) {
             throw new SecurityException(
-                    "Invalid preferences path."
-            );
+                    "Invalid preferences path.");
         }
 
+        String downloadPath = downloads.toString()
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
 
-        String downloadPath =
-                downloadsDirectory
-                        .toString()
-                        .replace("\\", "\\\\")
-                        .replace("\"", "\\\"");
-
-
-        String preferencesJson =
-                """
+        String json = """
                 {
                   "download": {
                     "default_directory": "%s",
@@ -463,182 +500,80 @@ public class BrowserManager {
                 }
                 """.formatted(downloadPath);
 
-
         Files.writeString(
-                preferencesFile,
-                preferencesJson,
-                StandardCharsets.UTF_8
-        );
+                preferences,
+                json,
+                StandardCharsets.UTF_8);
     }
 
-
     // =========================================================
-    // FIND INSTALLED BROWSER
+    // FIND BROWSER
     // =========================================================
 
     private String findBrowser() {
 
-        String[] possibleBrowsers = {
-
-                // Chrome
+        String[] candidates = {
                 "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-
                 "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-
-                // Edge
                 "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-
                 "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
         };
 
-
-        for (String browser :
-                possibleBrowsers) {
-
-            if (Files.exists(
-                    Path.of(browser))) {
-
-                return browser;
+        for (String candidate : candidates) {
+            if (Files.exists(Path.of(candidate))) {
+                return candidate;
             }
         }
 
-
         throw new IllegalStateException(
-                "No supported browser found. "
-                        + "Please install Google Chrome "
-                        + "or Microsoft Edge."
-        );
+                "No supported Chrome or Edge installation found.");
     }
 
-
     // =========================================================
-    // GET BROWSER NAME
-    // =========================================================
-
-    private String getBrowserName(
-            String browserPath) {
-
-        if (browserPath
-                .toLowerCase()
-                .contains("chrome")) {
-
-            return "chrome";
-        }
-
-
-        if (browserPath
-                .toLowerCase()
-                .contains("msedge")) {
-
-            return "edge";
-        }
-
-
-        return "unknown";
-    }
-
-
-    // =========================================================
-    // DELETE BROWSER PROFILE
+    // DELETE DIRECTORY TREE
     // =========================================================
 
-    public void deleteBrowserProfile(
-            String sessionId) {
+    private void deleteDirectoryTree(Path directory)
+            throws IOException {
 
-        validateSessionId(sessionId);
+        Files.walkFileTree(
+                directory,
+                new SimpleFileVisitor<>() {
 
+                    @Override
+                    public FileVisitResult visitFile(
+                            Path file,
+                            BasicFileAttributes attributes)
+                            throws IOException {
 
-        // Close browser first
-        closeSecureBrowser(sessionId);
+                        Files.delete(file);
+                        return FileVisitResult.CONTINUE;
+                    }
 
+                    @Override
+                    public FileVisitResult visitFileFailed(
+                            Path file,
+                            IOException exception)
+                            throws IOException {
 
-        Path baseDirectory =
-                Path.of(BROWSER_PROFILES_FOLDER)
-                        .toAbsolutePath()
-                        .normalize();
+                        throw new IOException(
+                                "Cannot access profile item: " + file,
+                                exception);
+                    }
 
+                    @Override
+                    public FileVisitResult postVisitDirectory(
+                            Path dir,
+                            IOException exception)
+                            throws IOException {
 
-        Path profileDirectory =
-                baseDirectory
-                        .resolve(sessionId)
-                        .normalize();
-
-
-        if (!profileDirectory.startsWith(
-                baseDirectory)) {
-
-            throw new SecurityException(
-                    "Invalid browser profile path."
-            );
-        }
-
-
-        if (!Files.exists(
-                profileDirectory)) {
-
-            return;
-        }
-
-
-        try {
-
-            Files.walk(profileDirectory)
-                    .sorted(
-                            (a, b) ->
-                                    b.compareTo(a)
-                    )
-                    .forEach(path -> {
-
-                        try {
-
-                            Files.deleteIfExists(
-                                    path
-                            );
-
-                        } catch (IOException e) {
-
-                            throw new RuntimeException(
-                                    "Unable to delete browser profile: "
-                                            + e.getMessage(),
-                                    e
-                            );
+                        if (exception != null) {
+                            throw exception;
                         }
-                    });
 
-
-        } catch (IOException e) {
-
-            throw new RuntimeException(
-                    "Unable to clean browser profile: "
-                            + e.getMessage(),
-                    e
-            );
-        }
-    }
-
-
-    // =========================================================
-    // VALIDATE SESSION ID
-    // =========================================================
-
-    private void validateSessionId(
-            String sessionId) {
-
-        if (sessionId == null
-                || sessionId.isBlank()) {
-
-            throw new IllegalArgumentException(
-                    "Session ID is required."
-            );
-        }
-
-
-        if (!sessionId.matches(
-                "^SESSION-[a-fA-F0-9-]+$")) {
-
-            throw new SecurityException(
-                    "Invalid session ID."
-            );
-        }
+                        Files.delete(dir);
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
     }
 }

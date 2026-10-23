@@ -2,23 +2,17 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Privacy Shield - Admin Login</title>
 
-    <link rel="stylesheet"
-          href="css/style.css">
-
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 
 <body>
 
 <div class="container">
-
     <div class="card">
 
         <h1>Privacy Shield</h1>
@@ -26,9 +20,6 @@
         <p class="subtitle">
             Administrator Access
         </p>
-
-
-        <!-- ADMIN LOGIN -->
 
         <div id="adminLoginSection">
 
@@ -38,39 +29,39 @@
                 type="text"
                 id="adminUsername"
                 placeholder="Admin Username"
+                autocomplete="username"
             >
 
             <input
                 type="password"
                 id="adminPassword"
                 placeholder="Admin Password"
+                autocomplete="current-password"
             >
 
-            <button onclick="adminLogin()">
+            <button
+                type="button"
+                onclick="adminLogin()">
                 Login as Admin
             </button>
 
-            <p id="adminLoginMessage"></p>
+            <p id="adminLoginMessage" class="message"></p>
 
-            <p>
+            <p class="switch-text">
                 <button
+                    type="button"
                     class="link-button"
                     onclick="goToUserLogin()">
-
                     Back to User Login
-
                 </button>
             </p>
 
         </div>
 
     </div>
-
 </div>
 
-
-<script src="js/admin.js"></script>
+<script src="/js/admin.js"></script>
 
 </body>
-
 </html>

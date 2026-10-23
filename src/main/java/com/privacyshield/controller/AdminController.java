@@ -9,7 +9,8 @@ import com.privacyshield.repository.UserRepository;
 import com.privacyshield.service.AuditLogService;
 import com.privacyshield.service.UserService;
 import com.privacyshield.workspace.WorkspaceManager;
-
+import com.privacyshield.model.AuditLog;
+import com.privacyshield.repository.AuditLogRepository;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
@@ -36,20 +37,36 @@ public class AdminController {
     private final UserRepository userRepository;
     private final SessionRepository sessionRepository;
     private final WorkspaceManager workspaceManager;
+    private final AuditLogRepository auditLogRepository;
 
     public AdminController(
-            UserService userService,
-            AuditLogService auditLogService,
-            UserRepository userRepository,
-            SessionRepository sessionRepository,
-            WorkspaceManager workspaceManager) {
+        UserService userService,
+        AuditLogService auditLogService,
+        UserRepository userRepository,
+        SessionRepository sessionRepository,
+        WorkspaceManager workspaceManager,
+        AuditLogRepository auditLogRepository) {
 
-        this.userService = userService;
-        this.auditLogService = auditLogService;
-        this.userRepository = userRepository;
-        this.sessionRepository = sessionRepository;
-        this.workspaceManager = workspaceManager;
-    }
+    this.userService = userService;
+    this.auditLogService = auditLogService;
+    this.userRepository = userRepository;
+    this.sessionRepository = sessionRepository;
+    this.workspaceManager = workspaceManager;
+    this.auditLogRepository = auditLogRepository;
+}
+
+// =========================================================
+// GET AUDIT LOGS
+// =========================================================
+
+@GetMapping("/audit-logs")
+public List<AuditLog> getAuditLogs(
+        HttpSession httpSession) {
+
+    requireAdmin(httpSession);
+
+    return auditLogRepository.findAllByOrderByTimestampDesc();
+}
 
 
     // =========================================================

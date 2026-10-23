@@ -1,8 +1,11 @@
+
 package com.privacyshield.controller;
 
 import com.privacyshield.repository.SessionRepository;
 import com.privacyshield.service.BrowserManager;
+import com.privacyshield.service.ClamAVScanner;
 import com.privacyshield.service.WorkspaceService;
+
 import jakarta.servlet.http.HttpSession;
 
 import org.springframework.core.io.Resource;
@@ -17,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,30 +32,30 @@ public class WorkspaceController {
     private final WorkspaceService workspaceService;
     private final SessionRepository sessionRepository;
     private final BrowserManager browserManager;
+    private final ClamAVScanner clamAVScanner;
 
     public WorkspaceController(
             WorkspaceService workspaceService,
             SessionRepository sessionRepository,
-            BrowserManager browserManager) {
+            BrowserManager browserManager,
+            ClamAVScanner clamAVScanner) {
 
         this.workspaceService = workspaceService;
         this.sessionRepository = sessionRepository;
         this.browserManager = browserManager;
+        this.clamAVScanner = clamAVScanner;
     }
 
-
     // =========================================================
-    // UPLOAD FILE
+    // UPLOAD FILE - SCAN BEFORE SAVING
     // =========================================================
 
     @PostMapping("/upload")
     public String uploadFile(
             @RequestParam("file") MultipartFile file,
-            HttpSession httpSession)
-            throws IOException {
+            HttpSession httpSession) {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute("userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
             return "Please login first.";
@@ -61,228 +65,196 @@ public class WorkspaceController {
             return "File cannot be empty.";
         }
 
-        String originalFilename =
-                file.getOriginalFilename();
+        String originalFilename = file.getOriginalFilename();
 
-        if (originalFilename == null
-                || originalFilename.isBlank()) {
-
+        if (originalFilename == null || originalFilename.isBlank()) {
             return "Invalid filename.";
         }
-
-        // =====================================================
-        // SAFELY EXTRACT FILENAME
-        // =====================================================
 
         String filename;
 
         try {
-
-            filename =
-                    Path.of(originalFilename)
-                            .getFileName()
-                            .toString();
-
+            filename = Path.of(originalFilename)
+                    .getFileName()
+                    .toString();
         } catch (InvalidPathException e) {
-
             return "Invalid filename.";
         }
 
         if (filename.isBlank()
                 || filename.equals(".")
                 || filename.equals("..")) {
-
             return "Invalid filename.";
         }
 
-        // =====================================================
-        // GET SAFE TARGET PATH
-        // =====================================================
-
         Path target;
+        Path workspace;
+        Path tempDirectory;
 
         try {
+            target = workspaceService.getSafeFilePath(userId, filename);
+            workspace = workspaceService.getActiveWorkspace(userId);
+            tempDirectory = workspace.resolve("temp").normalize();
 
-            target =
-                    workspaceService.getSafeFilePath(
-                            userId,
-                            filename);
+            if (!tempDirectory.startsWith(workspace)
+                    || !Files.isDirectory(tempDirectory)) {
+                return "Upload rejected: temporary directory unavailable.";
+            }
+
+            if (Files.exists(target)) {
+                return "File already exists: " + filename;
+            }
 
         } catch (SecurityException e) {
-
-            return "Access denied: "
-                    + e.getMessage();
+            return "Access denied: " + e.getMessage();
         }
 
-        // =====================================================
-        // PREVENT OVERWRITE
-        // =====================================================
+        Path stagedFile = null;
 
-        if (Files.exists(target)) {
+        try {
+            stagedFile = Files.createTempFile(
+                    tempDirectory, ".ps-upload-", ".scan");
 
-            return "File already exists: "
-                    + filename;
+            try (var input = file.getInputStream()) {
+                Files.copy(
+                        input,
+                        stagedFile,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            }
+
+            // Fail closed: do not save if infected or scan fails.
+            if (!clamAVScanner.isClean(stagedFile)) {
+                return "Upload rejected: antivirus detected a threat.";
+            }
+
+            Files.createDirectories(target.getParent());
+
+            if (Files.exists(target)) {
+                return "File already exists: " + filename;
+            }
+
+            Files.move(stagedFile, target);
+            stagedFile = null;
+
+            updateLastActivity(userId);
+
+            return "File uploaded and antivirus scan passed: " + filename;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Upload rejected: antivirus scan interrupted.";
+
+        } catch (IOException | SecurityException e) {
+            return "Upload rejected: antivirus scan failed or unavailable.";
+
+        } finally {
+            if (stagedFile != null) {
+                try {
+                    Files.deleteIfExists(stagedFile);
+                } catch (IOException e) {
+                    // Cleanup failure should be logged in production.
+                }
+            }
         }
-
-        // =====================================================
-        // CREATE DIRECTORY IF REQUIRED
-        // =====================================================
-
-        Files.createDirectories(
-                target.getParent());
-
-        // =====================================================
-        // SAVE FILE
-        // =====================================================
-
-        Files.copy(
-                file.getInputStream(),
-                target);
-
-        // =====================================================
-        // UPDATE ACTIVITY
-        // =====================================================
-
-        updateLastActivity(userId);
-
-        return "File uploaded successfully: "
-                + filename;
     }
-
 
     // =========================================================
     // LIST FILES
     // =========================================================
 
     @GetMapping("/files")
-    public List<String> listFiles(
-            HttpSession httpSession)
+    public List<String> listFiles(HttpSession httpSession)
             throws IOException {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
-            throw new SecurityException(
-                    "Please login first.");
+            throw new SecurityException("Please login first.");
         }
 
         Path filesDirectory =
-                workspaceService
-                        .getActiveFilesDirectory(
-                                userId);
+                workspaceService.getActiveFilesDirectory(userId);
 
         if (!Files.exists(filesDirectory)
                 || !Files.isDirectory(filesDirectory)) {
-
             return new ArrayList<>();
         }
 
         List<String> files;
 
-        try (var paths =
-                     Files.list(filesDirectory)) {
-
-            files =
-                    paths
-                            .filter(
-                                    Files::isRegularFile)
-                            .map(
-                                    path ->
-                                            path.getFileName()
-                                                    .toString())
-                            .toList();
+        try (var paths = Files.list(filesDirectory)) {
+            files = paths
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .toList();
         }
 
         updateLastActivity(userId);
-
         return files;
     }
 
-
     // =========================================================
-    // DOWNLOAD FILE
+    // DOWNLOAD FILE FROM APPLICATION WORKSPACE
     // =========================================================
 
     @GetMapping("/download/{filename}")
     public ResponseEntity<Resource> downloadFile(
             @PathVariable String filename,
-            HttpSession httpSession)
-            throws IOException {
+            HttpSession httpSession) throws IOException {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
-            return ResponseEntity
-                    .status(401)
-                    .build();
+            return ResponseEntity.status(401).build();
         }
 
         try {
-
             Path file =
-                    workspaceService.getSafeFilePath(
-                            userId,
-                            filename);
+                    workspaceService.getSafeFilePath(userId, filename);
 
-            // =================================================
-            // VERIFY FILE
-            // =================================================
-
-            if (!Files.exists(file)
-                    || !Files.isRegularFile(file)) {
-
-                return ResponseEntity
-                        .notFound()
-                        .build();
+            if (!Files.isRegularFile(file)) {
+                return ResponseEntity.notFound().build();
             }
 
-            Resource resource =
-                    new UrlResource(
-                            file.toUri());
+            // Scan before serving the file.
+            boolean clean;
 
-            if (!resource.exists()
-                    || !resource.isReadable()) {
-
-                return ResponseEntity
-                        .notFound()
-                        .build();
+            try {
+                clean = clamAVScanner.isClean(file);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return ResponseEntity.status(503).build();
+            } catch (IOException e) {
+                return ResponseEntity.status(503).build();
             }
 
-            // =================================================
-            // UPDATE ACTIVITY
-            // =================================================
+            if (!clean) {
+                Files.deleteIfExists(file);
+                return ResponseEntity.status(410).build();
+            }
+
+            Resource resource = new UrlResource(file.toUri());
+
+            if (!resource.exists() || !resource.isReadable()) {
+                return ResponseEntity.notFound().build();
+            }
 
             updateLastActivity(userId);
 
-            // =================================================
-            // RETURN FILE
-            // =================================================
-
-            return ResponseEntity
-                    .ok()
-                    .contentType(
-                            MediaType.APPLICATION_OCTET_STREAM)
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .header(
                             HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\""
-                                    + file.getFileName()
-                                    + "\"")
+                            "attachment; filename=\"" +
+                                    file.getFileName() + "\""
+                    )
                     .body(resource);
 
         } catch (SecurityException e) {
-
-            return ResponseEntity
-                    .status(403)
-                    .build();
+            return ResponseEntity.status(403).build();
         }
     }
-
 
     // =========================================================
     // DELETE FILE
@@ -291,193 +263,115 @@ public class WorkspaceController {
     @DeleteMapping("/file/{filename}")
     public String deleteFile(
             @PathVariable String filename,
-            HttpSession httpSession)
-            throws IOException {
+            HttpSession httpSession) throws IOException {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
             return "Please login first.";
         }
 
         try {
-
             Path file =
-                    workspaceService.getSafeFilePath(
-                            userId,
-                            filename);
+                    workspaceService.getSafeFilePath(userId, filename);
 
-            // =================================================
-            // VERIFY FILE
-            // =================================================
-
-            if (!Files.exists(file)
-                    || !Files.isRegularFile(file)) {
-
+            if (!Files.isRegularFile(file)) {
                 return "File not found.";
             }
 
-            // =================================================
-            // DELETE
-            // =================================================
-
             Files.delete(file);
-
-            // =================================================
-            // UPDATE ACTIVITY
-            // =================================================
-
             updateLastActivity(userId);
 
-            return "File deleted successfully: "
-                    + filename;
+            return "File deleted successfully: " + filename;
 
         } catch (SecurityException e) {
-
-            return "Access denied: "
-                    + e.getMessage();
+            return "Access denied: " + e.getMessage();
         }
     }
-
 
     // =========================================================
     // OPEN SECURE WORKSPACE
     // =========================================================
 
     @PostMapping("/open")
-    public String openWorkspace(
-            HttpSession httpSession)
+    public String openWorkspace(HttpSession httpSession)
             throws IOException {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
-
             return "Please login first.";
         }
 
         try {
-
-            workspaceService.openActiveWorkspace(
-                    userId);
-
+            workspaceService.openActiveWorkspace(userId);
             return "Secure workspace opened.";
 
         } catch (SecurityException e) {
-
-            return "Access denied: "
-                    + e.getMessage();
+            return "Access denied: " + e.getMessage();
         }
     }
-
 
     // =========================================================
     // OPEN SECURE BROWSER
     // =========================================================
 
     @PostMapping("/open-browser")
-    public String openSecureBrowser(
-            HttpSession httpSession) {
+    public String openSecureBrowser(HttpSession httpSession) {
 
-        Integer userId =
-                (Integer) httpSession.getAttribute(
-                        "userId");
+        Integer userId = (Integer) httpSession.getAttribute("userId");
 
         if (userId == null) {
             return "Please login first.";
         }
 
         try {
-
-            /*
-             * Find the currently active session
-             * belonging to the logged-in user.
-             */
             var activeSession =
-                    sessionRepository
-                            .findByUserIdAndStatus(
-                                    userId,
-                                    "ACTIVE");
+                    sessionRepository.findByUserIdAndStatus(userId, "ACTIVE");
 
             if (activeSession.isEmpty()) {
                 return "No active secure session found.";
             }
 
-            var session =
-                    activeSession.get();
+            var session = activeSession.get();
 
-            String sessionId =
-                    session.getSessionId();
+            String sessionId = session.getSessionId();
+            String workspacePath = session.getWorkspacePath();
 
-            String workspacePath =
-                    session.getWorkspacePath();
-
-            if (workspacePath == null
-                    || workspacePath.isBlank()) {
-
+            if (workspacePath == null || workspacePath.isBlank()) {
                 return "Workspace path is not available.";
             }
 
-            /*
-             * Launch browser using:
-             *
-             * Session-specific browser profile
-             * +
-             * Session-specific downloads folder
-             */
-            browserManager.openSecureBrowser(
-                    sessionId,
-                    workspacePath);
+            browserManager.openSecureBrowser(sessionId, workspacePath);
 
-            // Update session activity
-            session.setLastActivityTime(
-                    LocalDateTime.now());
-
+            session.setLastActivityTime(LocalDateTime.now());
             sessionRepository.save(session);
 
             return "Secure browser opened successfully. "
                     + "Downloads will be saved inside your secure workspace.";
 
         } catch (SecurityException e) {
-
-            return "Access denied: "
-                    + e.getMessage();
+            return "Access denied: " + e.getMessage();
 
         } catch (IllegalStateException e) {
-
             return e.getMessage();
 
         } catch (IOException e) {
-
-            return "Unable to open secure browser: "
-                    + e.getMessage();
+            return "Unable to open secure browser: " + e.getMessage();
         }
     }
-
 
     // =========================================================
     // UPDATE LAST ACTIVITY
     // =========================================================
 
-    private void updateLastActivity(
-            Integer userId) {
+    private void updateLastActivity(Integer userId) {
 
         sessionRepository
-                .findByUserIdAndStatus(
-                        userId,
-                        "ACTIVE")
+                .findByUserIdAndStatus(userId, "ACTIVE")
                 .ifPresent(session -> {
-
-                    session.setLastActivityTime(
-                            LocalDateTime.now());
-
-                    sessionRepository.save(
-                            session);
+                    session.setLastActivityTime(LocalDateTime.now());
+                    sessionRepository.save(session);
                 });
     }
 }
